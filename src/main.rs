@@ -18,17 +18,17 @@ const WINDOW_HEIGHT: u32 = 60*23;
 const VERTEX_SHADER_SRC: &'static str = r#"
     #version 330 core
     layout (location = 0) in vec3 aPos;
-    layout (location = 1) in vec3 aColor;
 
     uniform mat4 model;
     uniform mat4 view;
     uniform mat4 projection;
+    uniform vec3 color;
 
     out vec3 ourColor;
 
     void main() {
         gl_Position = projection * view * model * vec4(aPos, 1.0);
-        ourColor = aColor;
+        ourColor = color;
     }
 "#;
 
@@ -69,8 +69,8 @@ fn main() {
     let (shader_program, vao) = setup_cubes();
 
     let view = glm::look_at(
-        &glm::vec3(-5.0, -5.0, 5.0),
-        &glm::vec3(4.0, 4.0, 0.0),
+        &glm::vec3(5.0, 5.0, 10.0),
+        &glm::vec3(0.0, 0.0, 0.0),
         &glm::vec3(0.0, 0.0, 1.0),
     );
 
@@ -108,11 +108,14 @@ fn main() {
 
             gl::BindVertexArray(vao);
 
-            let vertex_color_cstr = CString::new("vertexColor").unwrap();
-            let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
+            // let vertex_color_cstr = CString::new("vertexColor").unwrap();
+            // let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
+
+            let color_cstr = CString::new("color").unwrap();
+            let color_loc = gl::GetUniformLocation(shader_program, color_cstr.as_ptr());
             
-            for x in 0..8 {
-                for y in 0..8 {
+            for x in -4..4 {
+                for y in -4..4 {
                     let color = if (x + y) % 2 == 0 {
                         glm::vec3(0.1, 0.1, 0.2) // bluish black
                     } else {
@@ -121,7 +124,7 @@ fn main() {
             
                     let model = glm::translate(&glm::identity(), &glm::vec3(x as f32, y as f32, -0.5));
                     gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, model.as_ptr());
-                    gl::Uniform3f(vertex_color_loc, color[0], color[1], color[2]);
+                    gl::Uniform3fv(color_loc, 1, color.as_ptr());
             
                     gl::DrawArrays(gl::TRIANGLES, 0, 36);
                 }
@@ -212,7 +215,7 @@ fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
             3,
             gl::FLOAT,
             gl::FALSE,
-            (6 * mem::size_of::<f32>()) as gl::types::GLint,
+            (3 * mem::size_of::<f32>()) as gl::types::GLint,
             ptr::null(),
         );
         gl::EnableVertexAttribArray(0);
@@ -223,7 +226,7 @@ fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
             3,
             gl::FLOAT,
             gl::FALSE,
-            (6 * mem::size_of::<f32>()) as gl::types::GLint,
+            (3 * mem::size_of::<f32>()) as gl::types::GLint,
             (3 * mem::size_of::<f32>()) as *const gl::types::GLvoid,
         );
         gl::EnableVertexAttribArray(1);
