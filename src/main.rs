@@ -4,14 +4,16 @@ extern crate sdl2;
 use gl::types::GLchar;
 use gl::types::GLint;
 
+use std::mem;
+
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::ffi::CString;
 use std::ptr;
 use nalgebra_glm as glm;
 
-const WINDOW_WIDTH: u32 = 800;
-const WINDOW_HEIGHT: u32 = 600;
+const WINDOW_WIDTH: u32 = 80*23;
+const WINDOW_HEIGHT: u32 = 60*23;
 
 const VERTEX_SHADER_SRC: &'static str = r#"
     #version 330 core
@@ -22,11 +24,11 @@ const VERTEX_SHADER_SRC: &'static str = r#"
     uniform mat4 view;
     uniform mat4 projection;
 
-    out vec3 vertexColor;
+    out vec3 ourColor;
 
     void main() {
         gl_Position = projection * view * model * vec4(aPos, 1.0);
-        vertexColor = aColor;
+        ourColor = aColor;
     }
 "#;
 
@@ -72,7 +74,7 @@ fn main() {
         &glm::vec3(0.0, 0.0, 1.0),
     );
 
-    let projection = glm::ortho(-9.0, 9.0, -9.0, 9.0, 0.1, 100.0);
+    let projection = glm::ortho(-6.0, 6.0, -6.0, 6.0, 0.1, 100.0);
 
     let mut event_pump = sdl.event_pump().unwrap();
     'main: loop {
@@ -204,15 +206,27 @@ fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
             gl::STATIC_DRAW,
         );
 
+        // Set vertex attributes
         gl::VertexAttribPointer(
             0,
             3,
             gl::FLOAT,
             gl::FALSE,
-            (3 * std::mem::size_of::<f32>()) as gl::types::GLint,
+            (6 * mem::size_of::<f32>()) as gl::types::GLint,
             ptr::null(),
         );
         gl::EnableVertexAttribArray(0);
+
+        // Set color attributes
+        gl::VertexAttribPointer(
+            1,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            (6 * mem::size_of::<f32>()) as gl::types::GLint,
+            (3 * mem::size_of::<f32>()) as *const gl::types::GLvoid,
+        );
+        gl::EnableVertexAttribArray(1);
 
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         gl::BindVertexArray(0);
