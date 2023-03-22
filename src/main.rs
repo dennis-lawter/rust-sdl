@@ -5,44 +5,81 @@ use gl::types::GLchar;
 use gl::types::GLint;
 use sdl2::keyboard::Scancode;
 
+use std::ffi::c_void;
 use std::mem;
 use std::time::Instant;
 
+use nalgebra_glm as glm;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::ffi::CString;
 use std::ptr;
-use nalgebra_glm as glm;
 
-const WINDOW_WIDTH: u32 = 80*23;
-const WINDOW_HEIGHT: u32 = 60*23;
+const WINDOW_WIDTH: u32 = 80 * 23;
+const WINDOW_HEIGHT: u32 = 60 * 23;
 
 const VERTEX_SHADER_SRC: &'static str = r#"
-    #version 330 core
-    layout (location = 0) in vec3 aPos;
+#version 420 core
 
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
-    uniform vec3 color;
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
 
-    out vec3 ourColor;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+uniform vec3 viewPos;
+uniform vec3 lightPos;
 
-    void main() {
-        gl_Position = projection * view * model * vec4(aPos, 1.0);
-        ourColor = color;
-    }
+out vec3 Normal;
+out vec3 FragPos;
+out vec3 LightPosition;
+out vec3 ViewPosition;
+
+void main() {
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aNormal;
+    LightPosition = vec3(view * vec4(lightPos, 1.0));
+    ViewPosition = viewPos;
+}
+
 "#;
 
 const FRAGMENT_SHADER_SRC: &'static str = r#"
-    #version 330 core
-    in vec3 ourColor;
+#version 420 core
 
-    out vec4 color;
+in vec3 Normal;
+in vec3 FragPos;
 
-    void main() {
-        color = vec4(ourColor, 1.0);
-    }
+uniform vec3 objectColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+
+out vec4 color;
+
+void main() {
+    // Ambient
+    float ambientStrength = 0.2;
+    vec3 ambient = ambientStrength * objectColor;
+
+    // Diffuse
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * objectColor;
+
+    // Specular
+    float specularStrength = 0.2;
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec3 specular = specularStrength * spec * objectColor;
+
+    // Combine results
+    vec3 result = (ambient + diffuse + specular);
+    color = vec4(result, 1.0);
+}
+
 "#;
 
 fn main() {
@@ -79,10 +116,10 @@ fn main() {
         &glm::vec3(-5.0, -5.0, -9.0),
         &glm::vec3(0.0, 0.0, 1.0),
     );
-    
+
     // Create a rotation matrix for 180 degrees around the Z axis
     let rotation = glm::rotate_z(&glm::identity(), 180.0_f32.to_radians());
-    
+
     // Multiply the rotation matrix with the view matrix
     let _view = rotation * default_view;
 
@@ -154,7 +191,7 @@ fn main() {
             let model_cstr = CString::new("model").unwrap();
             let model_loc = gl::GetUniformLocation(shader_program, model_cstr.as_ptr());
 
-            let color_cstr = CString::new("color").unwrap();
+            let color_cstr = CString::new("objectColor").unwrap();
             let color_loc = gl::GetUniformLocation(shader_program, color_cstr.as_ptr());
 
             let camera_distance = 15.0_f32;
@@ -166,6 +203,9 @@ fn main() {
 
             let camera_position = rotation_matrix * glm::vec4(0.0, 0.0, -camera_distance, 1.0);
 
+            let light_pos_loc = gl::GetUniformLocation(shader_program, CString::new("lightPos").unwrap().as_ptr());
+            gl::Uniform3f(light_pos_loc, camera_position.x, camera_position.y, camera_position.z);
+
             let view = glm::look_at(
                 &glm::vec3(camera_position.x, camera_position.y, camera_position.z),
                 &glm::vec3(0.0, 0.0, 0.0),
@@ -173,10 +213,10 @@ fn main() {
             );
 
             // println!("yaw: {}, pitch: {}, roll: {}", yaw, pitch, roll);
-        
+
             let view_cstr = CString::new("view").unwrap();
             let view_loc = gl::GetUniformLocation(shader_program, view_cstr.as_ptr());
-        
+
             let projection_cstr = CString::new("projection").unwrap();
             let projection_loc = gl::GetUniformLocation(shader_program, projection_cstr.as_ptr());
 
@@ -188,6 +228,10 @@ fn main() {
             // let vertex_color_cstr = CString::new("vertexColor").unwrap();
             // let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
 
+
+            let camera_pos_loc = gl::GetUniformLocation(shader_program, b"cameraPos\0".as_ptr() as *const i8);
+            gl::Uniform3fv(camera_pos_loc, 1, camera_position.as_ptr());
+
             for x in -3..5 {
                 for y in -3..5 {
                     let color = if (x + y) % 2 == 0 {
@@ -197,17 +241,20 @@ fn main() {
                     };
 
                     gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
-                    let model = glm::translate(&glm::identity(), &glm::vec3(x as f32 - 0.5, y as f32 - 0.5, 0.0));
+                    let model = glm::translate(
+                        &glm::identity(),
+                        &glm::vec3(x as f32 - 0.5, y as f32 - 0.5, 0.0),
+                    );
                     gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, model.as_ptr());
                     gl::Uniform3fv(color_loc, 1, color.as_ptr());
-            
+
                     gl::DrawArrays(gl::TRIANGLES, 0, 36);
 
                     // wireframe
                     // gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
                     // gl::LineWidth(1.0);
                     // gl::Uniform3f(color_loc, 0.0, 0.0, 0.0);
-            
+
                     // gl::DrawArrays(gl::TRIANGLES, 0, 36);
                 }
             }
@@ -215,7 +262,6 @@ fn main() {
             // Reset the model matrix to the identity matrix
             let identity: glm::Mat4 = glm::identity();
             gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, identity.as_ptr());
-        
 
             // Draw axis lines
             gl::BindVertexArray(axis_vao);
@@ -239,67 +285,58 @@ fn main() {
 }
 
 fn setup_rendering() -> (u32, u32, u32, u32) {
-    let cube_vertices: [f32; 108] = [
+    let cube_vertices: [f32; 216] = [
         // Front face
-        -0.5, -0.5,  0.5,
-         0.5,  0.5,  0.5,
-         0.5, -0.5,  0.5,
-        -0.5,  0.5,  0.5,
-         0.5,  0.5,  0.5,
-        -0.5, -0.5,  0.5,
-    
+        -0.5, -0.5, 0.5, 0.0, 0.0, 0.1, //v1
+        0.5, 0.5, 0.5, 0.0, 0.0, 0.1, // v2
+        0.5, -0.5, 0.5, 0.0, 0.0, 0.1, // v3
+        -0.5, 0.5, 0.5, 0.0, 0.0, 0.1, // v4
+        0.5, 0.5, 0.5, 0.0, 0.0, 0.1, // v5
+        -0.5, -0.5, 0.5, 0.0, 0.0, 0.1, // v6
         // Right face
-         0.5, -0.5,  0.5,
-         0.5,  0.5, -0.5,
-         0.5, -0.5, -0.5,
-         0.5,  0.5, -0.5,
-         0.5,  0.5,  0.5,
-         0.5, -0.5,  0.5,
-    
+        0.5, -0.5, 0.5, 1.0, 0.0, 0.0, // v7
+        0.5, 0.5, -0.5, 1.0, 0.0, 0.0, // v8
+        0.5, -0.5, -0.5, 1.0, 0.0, 0.0, // v9
+        0.5, 0.5, -0.5, 1.0, 0.0, 0.0, // v10
+        0.5, 0.5, 0.5, 1.0, 0.0, 0.0, // v11
+        0.5, -0.5, 0.5, 1.0, 0.0, 0.0, // v12
         // Back face
-         0.5, -0.5, -0.5,
-        -0.5,  0.5, -0.5,
-        -0.5, -0.5, -0.5,
-        -0.5,  0.5, -0.5,
-         0.5,  0.5, -0.5,
-         0.5, -0.5, -0.5,
-    
+        0.5, -0.5, -0.5, 0.0, 0.0, -1.0, // v13
+        -0.5, 0.5, -0.5, 0.0, 0.0, -1.0, // v14
+        -0.5, -0.5, -0.5, 0.0, 0.0, -1.0, // v15
+        -0.5, 0.5, -0.5, 0.0, 0.0, -1.0, // v16
+        0.5, 0.5, -0.5, 0.0, 0.0, -1.0, // v17
+        0.5, -0.5, -0.5, 0.0, 0.0, -1.0, // v18
         // Left face
-        -0.5, -0.5, -0.5,
-        -0.5,  0.5,  0.5,
-        -0.5, -0.5,  0.5,
-        -0.5,  0.5,  0.5,
-        -0.5,  0.5, -0.5,
-        -0.5, -0.5, -0.5,
-    
+        -0.5, -0.5, -0.5, -1.0, 0.0, 0.0, // v19
+        -0.5, 0.5, 0.5, -1.0, 0.0, 0.0, // v20
+        -0.5, -0.5, 0.5, -1.0, 0.0, 0.0, // v21
+        -0.5, 0.5, 0.5, -1.0, 0.0, 0.0, // v22
+        -0.5, 0.5, -0.5, -1.0, 0.0, 0.0, // v23
+        -0.5, -0.5, -0.5, -1.0, 0.0, 0.0, // v24
         // Top face
-        -0.5,  0.5,  0.5,
-         0.5,  0.5, -0.5,
-         0.5,  0.5,  0.5,
-         0.5,  0.5, -0.5,
-        -0.5,  0.5, -0.5,
-        -0.5,  0.5,  0.5,
-    
+        -0.5, 0.5, 0.5, 0.0, 1.0, 0.0, // v25
+        0.5, 0.5, -0.5, 0.0, 1.0, 0.0, // v26
+        0.5, 0.5, 0.5, 0.0, 1.0, 0.0, // v27
+        0.5, 0.5, -0.5, 0.0, 1.0, 0.0, // v28
+        -0.5, 0.5, -0.5, 0.0, 1.0, 0.0, // v29
+        -0.5, 0.5, 0.5, 0.0, 1.0, 0.0, // v30
         // Bottom face
-        -0.5, -0.5,  0.5,
-         0.5, -0.5, -0.5,
-        -0.5, -0.5, -0.5,
-         0.5, -0.5, -0.5,
-         0.5, -0.5,  0.5,
-        -0.5, -0.5,  0.5,
+        -0.5, -0.5, 0.5, 0.0, -1.0, 0.0, // v31
+        0.5, -0.5, -0.5, 0.0, -1.0, 0.0, // v32
+        -0.5, -0.5, -0.5, 0.0, -1.0, 0.0, // v33
+        0.5, -0.5, -0.5, 0.0, -1.0, 0.0, // v34
+        0.5, -0.5, 0.5, 0.0, -1.0, 0.0, // v35
+        -0.5, -0.5, 0.5, 0.0, -1.0, 0.0, // v36
     ];
 
-
     let axis_vertices: [f32; 18] = [
-        // X-axis (red)
-        0.0, 0.0, 0.0,
-        10.0, 0.0, 0.0,
-        // Y-axis (green)
-        0.0, 0.0, 0.0,
-        0.0, 10.0, 0.0,
-        // Z-axis (blue)
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 10.0,
+        0.0, 0.0, 0.0, // X-axis origin
+        10.0, 0.0, 0.0, // X-axis length
+        0.0, 0.0, 0.0, // Y-axis origin
+        0.0, 10.0, 0.0, // Y-axis length
+        0.0, 0.0, 0.0, // Z-axis origin
+        0.0, 0.0, 10.0, // Z-axis length
     ];
 
     let (vao, shader_program, axis_vao, axis_vbo) = setup_opengl(&cube_vertices, &axis_vertices);
@@ -335,26 +372,10 @@ fn setup_opengl(cube_vertices: &[f32], axis_vertices: &[f32]) -> (u32, u32, u32,
             gl::STATIC_DRAW,
         );
 
-        // Set vertex attributes
-        gl::VertexAttribPointer(
-            0,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            (3 * mem::size_of::<f32>()) as gl::types::GLint,
-            ptr::null(),
-        );
+        gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 6 * mem::size_of::<f32>() as i32, ptr::null());
         gl::EnableVertexAttribArray(0);
-
-        // Set color attributes
-        gl::VertexAttribPointer(
-            1,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            (3 * mem::size_of::<f32>()) as gl::types::GLint,
-            (3 * mem::size_of::<f32>()) as *const gl::types::GLvoid,
-        );
+        
+        gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 6 * mem::size_of::<f32>() as i32, (3 * mem::size_of::<f32>()) as *const c_void);
         gl::EnableVertexAttribArray(1);
 
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
@@ -450,13 +471,13 @@ fn link_program(vertex_shader: u32, fragment_shader: u32) -> u32 {
                     std::str::from_utf8(&log).unwrap()
                 );
             }
-    
+
             gl::DetachShader(program, vertex_shader);
             gl::DetachShader(program, fragment_shader);
             gl::DeleteShader(vertex_shader);
             gl::DeleteShader(fragment_shader);
         }
-    
+
         program
     }
 }
