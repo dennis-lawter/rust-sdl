@@ -66,11 +66,13 @@ fn main() {
     unsafe {
         gl::Viewport(0, 0, WINDOW_WIDTH as i32, WINDOW_HEIGHT as i32);
         gl::ClearColor(0.3, 0.3, 0.3, 1.0);
+
+        gl::Disable(gl::CULL_FACE);
     }
 
     let (vao, shader_program, axis_vao, _axis_vbo) = setup_rendering();
 
-    let aspect_ratio = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
+    let _aspect_ratio = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
 
     let default_view = glm::look_at(
         &glm::vec3(5.0, 5.0, 10.0),
@@ -84,12 +86,12 @@ fn main() {
     // Multiply the rotation matrix with the view matrix
     let _view = rotation * default_view;
 
-    let mut pitch = -45.0_f32;
-    let mut roll = -135.0_f32;
-    let mut yaw = 180.0_f32;
+    let mut pitch = -135.0_f32;
+    let roll = 0.0_f32;
+    let mut yaw = -225.0_f32;
 
     let mut frame_counter = 0;
-    let mut timer = Instant::now();
+    let timer = Instant::now();
     let mut last_printed_second = 0;
 
     // let half_width = 7.0;
@@ -125,12 +127,12 @@ fn main() {
 
         // Handle key states for continuous rotation
         let key_state = event_pump.keyboard_state();
-        if key_state.is_scancode_pressed(Scancode::Q) {
-            yaw += 1.0;
-        }
-        if key_state.is_scancode_pressed(Scancode::E) {
-            yaw -= 1.0;
-        }
+        // if key_state.is_scancode_pressed(Scancode::Q) {
+        //     yaw += 1.0;
+        // }
+        // if key_state.is_scancode_pressed(Scancode::E) {
+        //     yaw -= 1.0;
+        // }
         if key_state.is_scancode_pressed(Scancode::W) {
             pitch += 1.0;
         }
@@ -138,14 +140,14 @@ fn main() {
             pitch -= 1.0;
         }
         if key_state.is_scancode_pressed(Scancode::A) {
-            roll += 1.0;
+            yaw += 1.0;
         }
         if key_state.is_scancode_pressed(Scancode::D) {
-            roll -= 1.0;
+            yaw -= 1.0;
         }
 
         unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
             gl::UseProgram(shader_program);
 
@@ -186,19 +188,27 @@ fn main() {
             // let vertex_color_cstr = CString::new("vertexColor").unwrap();
             // let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
 
-            for x in -4..4 {
-                for y in -4..4 {
+            for x in -3..5 {
+                for y in -3..5 {
                     let color = if (x + y) % 2 == 0 {
                         glm::vec3(0.1, 0.1, 0.2) // bluish black
                     } else {
                         glm::vec3(0.95, 0.95, 0.85) // creamy ivory
                     };
-            
-                    let model = glm::translate(&glm::identity(), &glm::vec3(x as f32, y as f32, -0.5));
+
+                    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+                    let model = glm::translate(&glm::identity(), &glm::vec3(x as f32 - 0.5, y as f32 - 0.5, 0.0));
                     gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, model.as_ptr());
                     gl::Uniform3fv(color_loc, 1, color.as_ptr());
             
                     gl::DrawArrays(gl::TRIANGLES, 0, 36);
+
+                    // wireframe
+                    // gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+                    // gl::LineWidth(1.0);
+                    // gl::Uniform3f(color_loc, 0.0, 0.0, 0.0);
+            
+                    // gl::DrawArrays(gl::TRIANGLES, 0, 36);
                 }
             }
 
@@ -232,52 +242,53 @@ fn setup_rendering() -> (u32, u32, u32, u32) {
     let cube_vertices: [f32; 108] = [
         // Front face
         -0.5, -0.5,  0.5,
+         0.5,  0.5,  0.5,
          0.5, -0.5,  0.5,
-         0.5,  0.5,  0.5,
-         0.5,  0.5,  0.5,
         -0.5,  0.5,  0.5,
+         0.5,  0.5,  0.5,
         -0.5, -0.5,  0.5,
     
         // Right face
          0.5, -0.5,  0.5,
-         0.5, -0.5, -0.5,
          0.5,  0.5, -0.5,
+         0.5, -0.5, -0.5,
          0.5,  0.5, -0.5,
          0.5,  0.5,  0.5,
          0.5, -0.5,  0.5,
     
         // Back face
          0.5, -0.5, -0.5,
-        -0.5, -0.5, -0.5,
         -0.5,  0.5, -0.5,
+        -0.5, -0.5, -0.5,
         -0.5,  0.5, -0.5,
          0.5,  0.5, -0.5,
          0.5, -0.5, -0.5,
     
         // Left face
         -0.5, -0.5, -0.5,
-        -0.5, -0.5,  0.5,
         -0.5,  0.5,  0.5,
+        -0.5, -0.5,  0.5,
         -0.5,  0.5,  0.5,
         -0.5,  0.5, -0.5,
         -0.5, -0.5, -0.5,
     
         // Top face
         -0.5,  0.5,  0.5,
-         0.5,  0.5,  0.5,
          0.5,  0.5, -0.5,
+         0.5,  0.5,  0.5,
          0.5,  0.5, -0.5,
         -0.5,  0.5, -0.5,
         -0.5,  0.5,  0.5,
     
         // Bottom face
         -0.5, -0.5,  0.5,
-        -0.5, -0.5, -0.5,
          0.5, -0.5, -0.5,
+        -0.5, -0.5, -0.5,
          0.5, -0.5, -0.5,
          0.5, -0.5,  0.5,
         -0.5, -0.5,  0.5,
     ];
+
 
     let axis_vertices: [f32; 18] = [
         // X-axis (red)
@@ -306,10 +317,10 @@ fn setup_opengl(cube_vertices: &[f32], axis_vertices: &[f32]) -> (u32, u32, u32,
     let mut vbo = 0;
 
     unsafe {
-        gl::Disable(gl::CULL_FACE);
+        // gl::Disable(gl::CULL_FACE);
         // Enable depth testing
-        // gl::Enable(gl::DEPTH_TEST);
-        // gl::DepthFunc(gl::LESS);
+        gl::Enable(gl::DEPTH_TEST);
+        gl::DepthFunc(gl::LESS);
 
         gl::GenVertexArrays(1, &mut vao);
         gl::GenBuffers(1, &mut vbo);
