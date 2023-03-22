@@ -3,6 +3,7 @@ extern crate sdl2;
 
 use gl::types::GLchar;
 use gl::types::GLint;
+use sdl2::keyboard::Scancode;
 
 use std::mem;
 
@@ -66,15 +67,29 @@ fn main() {
         gl::ClearColor(0.3, 0.3, 0.3, 1.0);
     }
 
-    let (shader_program, vao) = setup_cubes();
+    let (vao, shader_program, axis_vao, _axis_vbo) = setup_rendering();
 
-    let view = glm::look_at(
+    let aspect_ratio = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
+
+    let default_view = glm::look_at(
         &glm::vec3(5.0, 5.0, 10.0),
-        &glm::vec3(0.0, 0.0, 0.0),
+        &glm::vec3(-5.0, -5.0, -9.0),
         &glm::vec3(0.0, 0.0, 1.0),
     );
+    
+    // Create a rotation matrix for 180 degrees around the Z axis
+    let rotation = glm::rotate_z(&glm::identity(), 180.0_f32.to_radians());
+    
+    // Multiply the rotation matrix with the view matrix
+    let view = rotation * default_view;
 
-    let projection = glm::ortho(-6.0, 6.0, -6.0, 6.0, 0.1, 100.0);
+    let mut pitch = 0.0_f32;
+    let mut roll = 0.0_f32;
+    let mut yaw = 180.0_f32;
+
+    let half_width = 7.0;
+    let half_height = half_width / aspect_ratio;
+    let projection = glm::ortho(-half_width, half_width, -half_height, half_height, 0.1, 100.0);
 
     let mut event_pump = sdl.event_pump().unwrap();
     'main: loop {
@@ -87,6 +102,27 @@ fn main() {
                 } => break 'main,
                 _ => {}
             }
+        }
+
+        // Handle key states for continuous rotation
+        let key_state = event_pump.keyboard_state();
+        if key_state.is_scancode_pressed(Scancode::Q) {
+            yaw += 1.0;
+        }
+        if key_state.is_scancode_pressed(Scancode::E) {
+            yaw -= 1.0;
+        }
+        if key_state.is_scancode_pressed(Scancode::W) {
+            pitch += 1.0;
+        }
+        if key_state.is_scancode_pressed(Scancode::S) {
+            pitch -= 1.0;
+        }
+        if key_state.is_scancode_pressed(Scancode::A) {
+            roll += 1.0;
+        }
+        if key_state.is_scancode_pressed(Scancode::D) {
+            roll -= 1.0;
         }
 
         unsafe {
@@ -113,7 +149,22 @@ fn main() {
 
             let color_cstr = CString::new("color").unwrap();
             let color_loc = gl::GetUniformLocation(shader_program, color_cstr.as_ptr());
-            
+
+            // Update view matrix based on the updated rotations
+            let rotation_matrix = glm::rotate_z(&glm::identity(), yaw.to_radians())
+                * glm::rotate_x(&glm::identity(), pitch.to_radians())
+                * glm::rotate_y(&glm::identity(), roll.to_radians());
+
+            let view = glm::look_at(
+                &glm::vec3(5.0, 5.0, 10.0),
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, 1.0),
+            );
+
+            let rotated_view = rotation_matrix * view;
+
+            gl::UniformMatrix4fv(view_loc, 1, gl::FALSE, rotated_view.as_ptr());
+
             for x in -4..4 {
                 for y in -4..4 {
                     let color = if (x + y) % 2 == 0 {
@@ -129,14 +180,35 @@ fn main() {
                     gl::DrawArrays(gl::TRIANGLES, 0, 36);
                 }
             }
+
+            // Reset the model matrix to the identity matrix
+            let identity: glm::Mat4 = glm::identity();
+            gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, identity.as_ptr());
+        
+
+            // Draw axis lines
+            gl::BindVertexArray(axis_vao);
+            gl::LineWidth(2.0);
+
+            // X-axis (red)
+            gl::Uniform3f(color_loc, 1.0, 0.0, 0.0);
+            gl::DrawArrays(gl::LINES, 0, 2);
+
+            // Y-axis (green)
+            gl::Uniform3f(color_loc, 0.0, 1.0, 0.0);
+            gl::DrawArrays(gl::LINES, 2, 2);
+
+            // Z-axis (blue)
+            gl::Uniform3f(color_loc, 0.0, 0.0, 1.0);
+            gl::DrawArrays(gl::LINES, 4, 2);
         }
 
         window.gl_swap_window();
     }
 }
 
-fn setup_cubes() -> (u32, u32) {
-    let vertices: [f32; 108] = [
+fn setup_rendering() -> (u32, u32, u32, u32) {
+    let cube_vertices: [f32; 108] = [
         // Positions (xyz)
         -0.5, -0.5, -0.5,
          0.5, -0.5, -0.5,
@@ -181,12 +253,24 @@ fn setup_cubes() -> (u32, u32) {
         -0.5,  0.5, -0.5,
     ];
 
-    let (shader_program, vao) = setup_opengl(&vertices);
+    let axis_vertices: [f32; 18] = [
+        // X-axis (red)
+        0.0, 0.0, 0.0,
+        10.0, 0.0, 0.0,
+        // Y-axis (green)
+        0.0, 0.0, 0.0,
+        0.0, 10.0, 0.0,
+        // Z-axis (blue)
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 10.0,
+    ];
 
-    (shader_program, vao)
+    let (vao, shader_program, axis_vao, axis_vbo) = setup_opengl(&cube_vertices, &axis_vertices);
+
+    (vao, shader_program, axis_vao, axis_vbo)
 }
 
-fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
+fn setup_opengl(cube_vertices: &[f32], axis_vertices: &[f32]) -> (u32, u32, u32, u32) {
     let vertex_shader = compile_shader(VERTEX_SHADER_SRC, gl::VERTEX_SHADER);
     let fragment_shader = compile_shader(FRAGMENT_SHADER_SRC, gl::FRAGMENT_SHADER);
 
@@ -204,8 +288,8 @@ fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
         gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
         gl::BufferData(
             gl::ARRAY_BUFFER,
-            (vertices.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-            vertices.as_ptr() as *const gl::types::GLvoid,
+            (cube_vertices.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+            cube_vertices.as_ptr() as *const gl::types::GLvoid,
             gl::STATIC_DRAW,
         );
 
@@ -235,7 +319,34 @@ fn setup_opengl(vertices: &[f32]) -> (u32, u32) {
         gl::BindVertexArray(0);
     }
 
-    (shader_program, vao)
+    let mut axis_vao = 0;
+    let mut axis_vbo = 0;
+
+    unsafe {
+        gl::GenVertexArrays(1, &mut axis_vao);
+        gl::GenBuffers(1, &mut axis_vbo);
+
+        gl::BindVertexArray(axis_vao);
+        gl::BindBuffer(gl::ARRAY_BUFFER, axis_vbo);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            (axis_vertices.len() * mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+            axis_vertices.as_ptr() as *const gl::types::GLvoid,
+            gl::STATIC_DRAW,
+        );
+
+        gl::VertexAttribPointer(
+            0,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            (3 * mem::size_of::<f32>()) as gl::types::GLint,
+            ptr::null(),
+        );
+        gl::EnableVertexAttribArray(0);
+    }
+
+    (vao, shader_program, axis_vao, axis_vbo)
 }
 
 fn compile_shader(src: &str, shader_type: u32) -> u32 {
