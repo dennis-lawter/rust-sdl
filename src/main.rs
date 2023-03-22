@@ -59,20 +59,21 @@ out vec4 color;
 
 void main() {
     // Ambient
-    float ambientStrength = 0.2;
+    float ambientStrength = 0.1;
     vec3 ambient = ambientStrength * objectColor;
 
     // Diffuse
+    float diffuseStrength = 1.0;
     vec3 norm = normalize(Normal);
     vec3 lightDir = normalize(lightPos - FragPos);
     float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * objectColor;
+    vec3 diffuse = diff * objectColor * diffuseStrength;
 
     // Specular
-    float specularStrength = 0.2;
+    float specularStrength = 0.8;
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 4);
     vec3 specular = specularStrength * spec * objectColor;
 
     // Combine results
@@ -123,7 +124,7 @@ fn main() {
     // Multiply the rotation matrix with the view matrix
     let _view = rotation * default_view;
 
-    let mut pitch = -135.0_f32;
+    let mut pitch = 135.0_f32;
     let roll = 0.0_f32;
     let mut yaw = -225.0_f32;
 
@@ -171,10 +172,14 @@ fn main() {
         //     yaw -= 1.0;
         // }
         if key_state.is_scancode_pressed(Scancode::W) {
-            pitch += 1.0;
+            if pitch < 179.0 {
+                pitch += 1.0;
+            }
         }
         if key_state.is_scancode_pressed(Scancode::S) {
-            pitch -= 1.0;
+            if pitch > 1.0 {
+                pitch -= 1.0;
+            }
         }
         if key_state.is_scancode_pressed(Scancode::A) {
             yaw += 1.0;
@@ -203,8 +208,14 @@ fn main() {
 
             let camera_position = rotation_matrix * glm::vec4(0.0, 0.0, -camera_distance, 1.0);
 
-            let light_pos_loc = gl::GetUniformLocation(shader_program, CString::new("lightPos").unwrap().as_ptr());
-            gl::Uniform3f(light_pos_loc, camera_position.x, camera_position.y, camera_position.z);
+            let light_pos_cstr = CString::new("lightPos").unwrap();
+            let light_pos_loc = gl::GetUniformLocation(shader_program, light_pos_cstr.as_ptr());
+            gl::Uniform3f(
+                light_pos_loc,
+                camera_position.x,
+                camera_position.y,
+                camera_position.z,
+            );
 
             let view = glm::look_at(
                 &glm::vec3(camera_position.x, camera_position.y, camera_position.z),
@@ -228,8 +239,8 @@ fn main() {
             // let vertex_color_cstr = CString::new("vertexColor").unwrap();
             // let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
 
-
-            let camera_pos_loc = gl::GetUniformLocation(shader_program, b"cameraPos\0".as_ptr() as *const i8);
+            let camera_pos_loc =
+                gl::GetUniformLocation(shader_program, b"cameraPos\0".as_ptr() as *const i8);
             gl::Uniform3fv(camera_pos_loc, 1, camera_position.as_ptr());
 
             for x in -3..5 {
@@ -259,25 +270,25 @@ fn main() {
                 }
             }
 
-            // Reset the model matrix to the identity matrix
-            let identity: glm::Mat4 = glm::identity();
-            gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, identity.as_ptr());
+            // // Reset the model matrix to the identity matrix
+            // let identity: glm::Mat4 = glm::identity();
+            // gl::UniformMatrix4fv(model_loc, 1, gl::FALSE, identity.as_ptr());
 
-            // Draw axis lines
-            gl::BindVertexArray(axis_vao);
-            gl::LineWidth(2.0);
+            // // Draw axis lines
+            // gl::BindVertexArray(axis_vao);
+            // gl::LineWidth(2.0);
 
-            // X-axis (red)
-            gl::Uniform3f(color_loc, 1.0, 0.0, 0.0);
-            gl::DrawArrays(gl::LINES, 0, 2);
+            // // X-axis (red)
+            // gl::Uniform3f(color_loc, 1.0, 0.0, 0.0);
+            // gl::DrawArrays(gl::LINES, 0, 2);
 
-            // Y-axis (green)
-            gl::Uniform3f(color_loc, 0.0, 1.0, 0.0);
-            gl::DrawArrays(gl::LINES, 2, 2);
+            // // Y-axis (green)
+            // gl::Uniform3f(color_loc, 0.0, 1.0, 0.0);
+            // gl::DrawArrays(gl::LINES, 2, 2);
 
-            // Z-axis (blue)
-            gl::Uniform3f(color_loc, 0.0, 0.0, 1.0);
-            gl::DrawArrays(gl::LINES, 4, 2);
+            // // Z-axis (blue)
+            // gl::Uniform3f(color_loc, 0.0, 0.0, 1.0);
+            // gl::DrawArrays(gl::LINES, 4, 2);
         }
 
         window.gl_swap_window();
@@ -372,10 +383,24 @@ fn setup_opengl(cube_vertices: &[f32], axis_vertices: &[f32]) -> (u32, u32, u32,
             gl::STATIC_DRAW,
         );
 
-        gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 6 * mem::size_of::<f32>() as i32, ptr::null());
+        gl::VertexAttribPointer(
+            0,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            6 * mem::size_of::<f32>() as i32,
+            ptr::null(),
+        );
         gl::EnableVertexAttribArray(0);
-        
-        gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 6 * mem::size_of::<f32>() as i32, (3 * mem::size_of::<f32>()) as *const c_void);
+
+        gl::VertexAttribPointer(
+            1,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            6 * mem::size_of::<f32>() as i32,
+            (3 * mem::size_of::<f32>()) as *const c_void,
+        );
         gl::EnableVertexAttribArray(1);
 
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
