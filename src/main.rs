@@ -6,6 +6,7 @@ use gl::types::GLint;
 use sdl2::keyboard::Scancode;
 
 use std::mem;
+use std::time::Instant;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -81,18 +82,36 @@ fn main() {
     let rotation = glm::rotate_z(&glm::identity(), 180.0_f32.to_radians());
     
     // Multiply the rotation matrix with the view matrix
-    let view = rotation * default_view;
+    let _view = rotation * default_view;
 
-    let mut pitch = 0.0_f32;
-    let mut roll = 0.0_f32;
-    let mut yaw = 180.0_f32;
+    let mut pitch = -45.0_f32;
+    let mut roll = -135.0_f32;
+    let mut yaw = 0.0_f32;
 
-    let half_width = 7.0;
-    let half_height = half_width / aspect_ratio;
-    let projection = glm::ortho(-half_width, half_width, -half_height, half_height, 0.1, 100.0);
+    let mut frame_counter = 0;
+    let mut timer = Instant::now();
+    let mut last_printed_second = 0;
+
+    // let half_width = 7.0;
+    // let half_height = half_width / aspect_ratio;
+    // let projection = glm::ortho(-half_width, half_width, -half_height, half_height, 0.1, 100.0);
+    let aspect_ratio = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
+    let fov = 45.0_f32.to_radians();
+    let near = 0.1;
+    let far = 100.0;
+    let projection = glm::perspective(aspect_ratio, fov, near, far);
 
     let mut event_pump = sdl.event_pump().unwrap();
     'main: loop {
+        frame_counter += 1;
+        let elapsed_seconds = timer.elapsed().as_secs();
+        if elapsed_seconds > last_printed_second {
+            // let fps = frame_counter as f64 / elapsed_seconds as f64;
+            println!("Frames per second: {}", frame_counter);
+            last_printed_second = elapsed_seconds;
+            frame_counter = 0;
+        }
+
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -132,6 +151,26 @@ fn main() {
 
             let model_cstr = CString::new("model").unwrap();
             let model_loc = gl::GetUniformLocation(shader_program, model_cstr.as_ptr());
+
+            let color_cstr = CString::new("color").unwrap();
+            let color_loc = gl::GetUniformLocation(shader_program, color_cstr.as_ptr());
+
+            let camera_distance = 15.0_f32;
+
+            // Update view matrix based on the updated rotations
+            let rotation_matrix = glm::rotate_z(&glm::identity(), yaw.to_radians())
+                * glm::rotate_x(&glm::identity(), pitch.to_radians())
+                * glm::rotate_y(&glm::identity(), roll.to_radians());
+
+            let camera_position = rotation_matrix * glm::vec4(0.0, 0.0, -camera_distance, 1.0);
+
+            let view = glm::look_at(
+                &glm::vec3(camera_position.x, camera_position.y, camera_position.z),
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, 1.0),
+            );
+
+            // println!("yaw: {}, pitch: {}, roll: {}", yaw, pitch, roll);
         
             let view_cstr = CString::new("view").unwrap();
             let view_loc = gl::GetUniformLocation(shader_program, view_cstr.as_ptr());
@@ -146,24 +185,6 @@ fn main() {
 
             // let vertex_color_cstr = CString::new("vertexColor").unwrap();
             // let vertex_color_loc = gl::GetUniformLocation(shader_program, vertex_color_cstr.as_ptr());
-
-            let color_cstr = CString::new("color").unwrap();
-            let color_loc = gl::GetUniformLocation(shader_program, color_cstr.as_ptr());
-
-            // Update view matrix based on the updated rotations
-            let rotation_matrix = glm::rotate_z(&glm::identity(), yaw.to_radians())
-                * glm::rotate_x(&glm::identity(), pitch.to_radians())
-                * glm::rotate_y(&glm::identity(), roll.to_radians());
-
-            let view = glm::look_at(
-                &glm::vec3(5.0, 5.0, 10.0),
-                &glm::vec3(0.0, 0.0, 0.0),
-                &glm::vec3(0.0, 0.0, 1.0),
-            );
-
-            let rotated_view = rotation_matrix * view;
-
-            gl::UniformMatrix4fv(view_loc, 1, gl::FALSE, rotated_view.as_ptr());
 
             for x in -4..4 {
                 for y in -4..4 {
