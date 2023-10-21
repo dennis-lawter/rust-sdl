@@ -171,20 +171,20 @@ fn main() {
         // if key_state.is_scancode_pressed(Scancode::E) {
         //     yaw -= 1.0;
         // }
-        if key_state.is_scancode_pressed(Scancode::W) {
+        if key_state.is_scancode_pressed(Scancode::Up) {
             if pitch < 179.0 {
                 pitch += 1.0;
             }
         }
-        if key_state.is_scancode_pressed(Scancode::S) {
+        if key_state.is_scancode_pressed(Scancode::Down) {
             if pitch > 1.0 {
                 pitch -= 1.0;
             }
         }
-        if key_state.is_scancode_pressed(Scancode::A) {
+        if key_state.is_scancode_pressed(Scancode::Left) {
             yaw += 1.0;
         }
-        if key_state.is_scancode_pressed(Scancode::D) {
+        if key_state.is_scancode_pressed(Scancode::Right) {
             yaw -= 1.0;
         }
 
