@@ -1,0 +1,1 @@
+The purpose of this repository was to test the limits of ChatGPT 4.0. Using many prompts, a simple 3D environment was to be created using Rust and SDL. The full conversation can be viewed at https://chat.openai.com/share/f38b1c95-7f77-45f0-91dd-9e18301493b0
